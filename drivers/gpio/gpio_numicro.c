@@ -29,6 +29,10 @@ struct gpio_numicro_config {
 	/* gpio_driver_config needs to be first */
 	struct gpio_driver_config common;
 	GPIO_T *regs;
+#ifdef CONFIG_GPIO_ENABLE_DISABLE_INTERRUPT
+        /* backup of the INTEN register */
+        uint32_t interrupt_en_reg;
+#endif /* CONFIG_GPIO_ENABLE_DISABLE_INTERRUPT */
 };
 
 struct gpio_numicro_data {
@@ -166,6 +170,16 @@ static int gpio_numicro_pin_interrupt_configure(const struct device *dev,
 	uint32_t int_level = 0;
 	uint32_t int_level_mask = BIT(pin) | BIT(pin + 16);
 
+#ifdef CONFIG_GPIO_ENABLE_DISABLE_INTERRUPT
+	if (mode == GPIO_INT_MODE_DISABLE_ONLY) {
+		cfg->regs->INTEN &= ~(BIT(pin) | BIT(pin + 16));
+		return 0;
+	} else if (mode == GPIO_INT_MODE_ENABLE_ONLY) {
+		cfg->regs->INTEN |= cfg->interrupt_en_reg & (BIT(pin) | BIT(pin + 16));
+		return 0;
+	}
+#endif /* CONFIG_GPIO_ENABLE_DISABLE_INTERRUPT */
+
 	if (mode != GPIO_INT_MODE_DISABLED) {
 		int_type = (mode == GPIO_INT_MODE_LEVEL) ? 1 : 0;
 
@@ -184,6 +198,9 @@ static int gpio_numicro_pin_interrupt_configure(const struct device *dev,
 
 	cfg->regs->INTTYPE = (cfg->regs->INTTYPE & ~BIT(pin)) | (int_type << pin);
 	cfg->regs->INTEN = (cfg->regs->INTEN & ~int_level_mask) | int_level;
+#ifdef CONFIG_GPIO_ENABLE_DISABLE_INTERRUPT
+        cfg->interrupt_en_reg = cfg->regs->INTEN;
+#endif /* CONFIG_GPIO_ENABLE_DISABLE_INTERRUPT */
 
 	return 0;
 }
@@ -240,6 +257,7 @@ static const struct gpio_driver_api gpio_numicro_driver_api = {
 			.port_pin_mask = GPIO_PORT_PIN_MASK_FROM_DT_INST(n),\
 		},							\
 		.regs = (GPIO_T *)DT_INST_REG_ADDR(n),			\
+		.interrupt_en_reg = 0,					\
 	};								\
 									\
 	DEVICE_DT_INST_DEFINE(n,					\
